@@ -1,40 +1,80 @@
 package animationlab;
 
 import java.awt.Image;
-import java.awt.image.BufferedImage;
+import java.util.ArrayList;
 
-public class Sprite {
-    private Animation anim;
-    private float x, y;
-    private float dx, dy;
+public class Animation {
 
-    public Sprite(Animation anim) {
-        this.anim = anim;
-        x = 0; y = 0;
-        dx = 0; dy = 0;
+    private ArrayList<AnimFrame> frames;
+    private int currFrameIndex;
+    private long animTime;
+    private long totalDuration;
+    private boolean playing;
+
+    public Animation() {
+        frames = new ArrayList<>();
+        totalDuration = 0;
+        currFrameIndex = 0;
+        animTime = 0;
+        playing = false;
     }
 
-    public Sprite(BufferedImage bufferedImage, int i, int j) {
-		// TODO Auto-generated constructor stub
-	}
+    public synchronized void addFrame(Image image, long duration) {
+        totalDuration += duration;
+        frames.add(new AnimFrame(image, totalDuration));
+    }
 
-	public float getX() { return x; }
-    public float getY() { return y; }
-    public void setX(float x) { this.x = x; }
-    public void setY(float y) { this.y = y; }
+    public synchronized void start() {
+        if (playing) return;
 
-    public void setVelocityX(float dx) { this.dx = dx; }
-    public void setVelocityY(float dy) { this.dy = dy; }
-    public float getVelocityX() { return dx; }
-    public float getVelocityY() { return dy; }
+        currFrameIndex = 0;
+        animTime = 0;
+        playing = true;
+    }
 
-    public Image getImage() { return anim.getImage(); }
-    public void startAnimation() { anim.start(); }
-    public void stopAnimation() { anim.stop(); }
+    public synchronized void stop() {
+        playing = false;
+        currFrameIndex = 0;
+        animTime = 0;
+    }
 
-    public void update(long elapsedTime) {
-        x += dx * elapsedTime;
-        y += dy * elapsedTime;
-        anim.update(elapsedTime);
+    public synchronized void update(long elapsedTime) {
+
+        if (!playing || frames.size() <= 1)
+            return;
+
+        animTime += elapsedTime;
+
+        if (animTime >= totalDuration) {
+            animTime %= totalDuration;
+            currFrameIndex = 0;
+        }
+
+        while (animTime > getFrame(currFrameIndex).endTime) {
+            currFrameIndex++;
+        }
+    }
+
+    public synchronized Image getImage() {
+
+        if (frames.size() == 0)
+            return null;
+
+        return getFrame(currFrameIndex).image;
+    }
+
+    private AnimFrame getFrame(int i) {
+        return frames.get(i);
+    }
+
+    private class AnimFrame {
+
+        Image image;
+        long endTime;
+
+        public AnimFrame(Image image, long endTime) {
+            this.image = image;
+            this.endTime = endTime;
+        }
     }
 }
