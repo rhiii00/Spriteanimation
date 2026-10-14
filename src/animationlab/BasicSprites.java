@@ -2,282 +2,331 @@ package animationlab;
 
 import javax.swing.*;
 import java.awt.*;
+import java.awt.event.*;
 import java.awt.image.BufferedImage;
 import java.io.File;
 import java.io.IOException;
 import javax.imageio.ImageIO;
-import java.awt.event.*;
 
 public class BasicSprites extends JFrame implements Runnable, KeyListener {
+
     private Thread gameThread;
     private boolean running = true;
-    private Image oscreen;
-    private int scWidth, scHeight;
-    
-    private boolean collisionDetected = false;
+    private Image screen;
 
-    private BufferedImage spriteSheet;
+    private int scwidth, scheight;
+
+    private BufferedImage spritesheet;
     private BufferedImage[] frames;
+
     private final int rows = 1;
-    private final int columns = 8; // your sheet has 7 frames
-    private final int frameWidth = 92; // adjust based on your image
-    private final int frameHeight = 187;
-    
- // Player2 spritesheet layout (adjust if different)
-    private final int rows2 = 1;
-    private final int columns2 = 8;
-    private final int frameWidth2 = 92;
-    private final int frameHeight2 = 196;
+    private final int cols = 8;
+    private final int framewidth = 92;
+    private final int frameheight = 187;
 
+    private final int SPRITE_WIDTH = 55;
+    private final int SPRITE_HEIGHT = 110;
 
-    private BufferedImage spriteSheet2;
-    private BufferedImage[] frames2;
-    
     private Sprite player;
-    private Sprite player2;
+    private Sprite enemy;
 
-    // Keyboard inputs
-    private boolean isAPressed, isSPressed, isDPressed, isWPressed;
-    private boolean isLeftPressed, isRightPressed, isUpPressed, isDownPressed;
+    private final float ENEMY_DETECTION_RANGE = 300f;
+    private final float ENEMY_STOP_DISTANCE = 80f;
+    private final float ENEMY_SPEED = 0.14f;
 
+    private boolean isAPressed;
+    private boolean isDPressed;
+    private boolean isWPressed;
+    private boolean isSPressed;
 
     public BasicSprites(String title, int width, int height) {
+
         super(title);
+
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         setSize(width, height);
-        setResizable(false);
-        scWidth = width; scHeight = height;
+
+        scwidth = width;
+        scheight = height;
+
         addKeyListener(this);
         setFocusable(true);
-        loadPlayer();
+
+        loadSprites();
+
         gameThread = new Thread(this);
     }
 
-    private void loadPlayer() {
-        // Load Player1 spritesheet
+    private void loadSprites() {
         try {
-            spriteSheet = ImageIO.read(new File("spritesheet.png"));
-            System.out.println("Spritesheet loaded successfully!");
+            spritesheet = ImageIO.read(new File("spritesheet.png"));
+            System.out.println("Spritesheet Loaded!");
         } catch (IOException ex) {
-            System.out.println("Unable to load spritesheet: " + ex.getMessage());
+            System.out.println("Could not load spritesheet.");
             return;
         }
 
-        frames = new BufferedImage[rows * columns];
-        for (int row = 0; row < rows; row++) {
-            for (int col = 0; col < columns; col++) {
-                frames[(row * columns) + col] = spriteSheet.getSubimage(
-                    col * frameWidth,
-                    row * frameHeight,
-                    frameWidth,
-                    frameHeight
-                );
+        frames = new BufferedImage[rows * cols];
+
+        for (int r = 0; r < rows; r++) {
+            for (int c = 0; c < cols; c++) {
+                frames[(r * cols) + c] =
+                    spritesheet.getSubimage(
+                        c * framewidth,
+                        r * frameheight,
+                        framewidth,
+                        frameheight);
             }
         }
 
-        // Build walking animation for Player1
-        Animation walkAnimation = new Animation();
+        Animation playerAnim = new Animation();
+
         for (BufferedImage frame : frames) {
-            walkAnimation.addFrame(frame, 100);
+            playerAnim.addFrame(frame, 100);
         }
 
-        player = new Sprite(walkAnimation);
-        player.setX(scWidth / 2 - frameWidth / 2);
-        player.setY(scHeight / 2 - frameHeight / 2);
+        player = new Sprite(playerAnim);
+        player.setX(400);
+        player.setY(250);
 
-        // Load Player2 spritesheet
-        try {
-            spriteSheet2 = ImageIO.read(new File("spritesheet2.png"));
-            System.out.println("Spritesheet2 loaded successfully!");
-        } catch (IOException ex) {
-            System.out.println("Unable to load spritesheet2: " + ex.getMessage());
-            return;
+        Animation enemyAnim = new Animation();
+
+        for (BufferedImage frame : frames) {
+            enemyAnim.addFrame(frame, 100);
         }
 
-        frames2 = new BufferedImage[rows2 * columns2]; // adjust if Player2 sheet differs
-        for (int row = 0; row < rows2; row++) {
-            for (int col = 0; col < columns2; col++) {
-                frames2[(row * columns2) + col] = spriteSheet2.getSubimage(
-                    col * frameWidth2,
-                    row * frameHeight2,
-                    frameWidth2,
-                    frameHeight2
-                );
-            }
-        }
-
-        // Build walking animation for Player2
-        Animation walkAnimation2 = new Animation();
-        for (BufferedImage frame : frames2) {
-            walkAnimation2.addFrame(frame, 100);
-        }
-
-        player2 = new Sprite(walkAnimation2);
-        player2.setX(scWidth / 4 - frameWidth2 / 2);   // place far left
-        player2.setY(scHeight / 2 - frameHeight2 / 2); // middle vertically
-        player2.startAnimation();
+        enemy = new Sprite(enemyAnim);
+        enemy.setX(100);
+        enemy.setY(100);
     }
 
+    private void processInput() {
+        float velocityX = 0;
+        float velocityY = 0;
+
+        if (isAPressed) velocityX = -0.18f;
+        if (isDPressed) velocityX = 0.18f;
+        if (isWPressed) velocityY = -0.18f;
+        if (isSPressed) velocityY = 0.18f;
+
+        player.setVelocityX(velocityX);
+        player.setVelocityY(velocityY);
+
+        if (velocityX != 0 || velocityY != 0)
+            player.startAnimation();
+        else
+            player.stopAnimation();
+    }
+
+    private void updateEnemyAI() {
+        Rectangle playerBounds = player.getBounds();
+        Rectangle enemyBounds = enemy.getBounds();
+
+        float playerCenterX = playerBounds.x + playerBounds.width / 2f;
+
+        float playerCenterY = playerBounds.y + playerBounds.height / 2f;
+
+        float enemyCenterX = enemyBounds.x + enemyBounds.width / 2f;
+
+        float enemyCenterY = enemyBounds.y + enemyBounds.height / 2f;
+
+        float differenceX = playerCenterX - enemyCenterX;
+        float differenceY = playerCenterY - enemyCenterY;
+        float distance = (float)Math.sqrt(differenceX * differenceX + differenceY * differenceY);
+
+        if (distance > ENEMY_DETECTION_RANGE) {
+            enemy.setVelocityX(0);
+            enemy.setVelocityY(0);
+            enemy.stopAnimation();
+            return;
+        }
+
+        if (distance <= ENEMY_STOP_DISTANCE) {
+            enemy.setVelocityX(0);
+            enemy.setVelocityY(0);
+            enemy.stopAnimation();
+            return;
+        }
+
+        float directionX = differenceX / distance;
+        float directionY = differenceY / distance;
+
+        enemy.setVelocityX(directionX * ENEMY_SPEED);
+        enemy.setVelocityY(directionY * ENEMY_SPEED);
+
+        enemy.startAnimation();
+    }
+
+    private boolean checkCollision() {
+        return player.getBounds().intersects(enemy.getBounds());
+    }
 
     @Override
     public void run() {
+
         long previousTime = System.currentTimeMillis();
+
         while (running) {
             long currentTime = System.currentTimeMillis();
             long elapsedTime = currentTime - previousTime;
+
             previousTime = currentTime;
+
             processInput();
+            updateEnemyAI();
+
             player.update(elapsedTime);
-            player2.update(elapsedTime);
-            if (checkCollision(player, player2)) {
-                System.out.println("Collision detected between Player1 and Player2!");
-                collisionDetected = true;   // set flag
-            } else {
-                collisionDetected = false;  // reset flag
-            }
-   
+            enemy.update(elapsedTime);
+
+            if (player.getX() < 0)
+                player.setX(0);
+
+            if (player.getY() < 0)
+                player.setY(0);
+
+            if (player.getX() > scwidth - SPRITE_WIDTH)
+                player.setX(scwidth - SPRITE_WIDTH);
+
+            if (player.getY() > scheight - SPRITE_HEIGHT)
+                player.setY(scheight - SPRITE_HEIGHT);
+
+            if (enemy.getX() < 0)
+                enemy.setX(0);
+
+            if (enemy.getY() < 0)
+                enemy.setY(0);
+
+            if (enemy.getX() > scwidth - SPRITE_WIDTH)
+                enemy.setX(scwidth - SPRITE_WIDTH);
+
+            if (enemy.getY() > scheight - SPRITE_HEIGHT)
+                enemy.setY(scheight - SPRITE_HEIGHT);
+
             repaint();
-            try { Thread.sleep(16); } catch (InterruptedException ex) { running = false; }
+
+            try {
+                Thread.sleep(16);
+            } catch (InterruptedException ex) {
+                running = false;
+            }
         }
-    }
-
-    private boolean checkCollision(Sprite s1, Sprite s2) {
-        Rectangle r1 = new Rectangle(Math.round(s1.getX()), Math.round(s1.getY()), frameWidth, frameHeight);
-        Rectangle r2 = new Rectangle(Math.round(s2.getX()), Math.round(s2.getY()), frameWidth, frameHeight);
-        return r1.intersects(r2);
-    }
-
-    
-    private void processInput() {
-        float velocityX = 0, velocityY = 0;
-        if (isAPressed) velocityX = -0.1f;
-        if (isDPressed) velocityX = 0.1f;
-        if (isWPressed) velocityY = -0.1f;
-        if (isSPressed) velocityY = 0.1f;
-        player.setVelocityX(velocityX);
-        player.setVelocityY(velocityY);
-        if (velocityX != 0 || velocityY != 0) player.startAnimation();
-        else player.stopAnimation();
-        
-     // Player2 (Arrow keys)
-        float velocityX2 = 0, velocityY2 = 0;
-        if (isLeftPressed)  velocityX2 = -0.1f;
-        if (isRightPressed) velocityX2 = 0.1f;
-        if (isUpPressed)    velocityY2 = -0.1f;
-        if (isDownPressed)  velocityY2 = 0.1f;
-        player2.setVelocityX(velocityX2);
-        player2.setVelocityY(velocityY2);
-        if (velocityX2 != 0 || velocityY2 != 0) player2.startAnimation();
-        else player2.stopAnimation();
-        
-       
-
     }
 
     @Override
     public void paint(Graphics g) {
+
         Graphics2D g2 = (Graphics2D) g;
-        oscreen = createImage(scWidth, scHeight);
-        Graphics2D offscreenGraphics = (Graphics2D) oscreen.getGraphics();
-        
-        offscreenGraphics.setColor(Color.WHITE);
-        offscreenGraphics.fillRect(0, 0, scWidth, scHeight);
-        
-        Image currentImage = player.getImage();
-        if (currentImage != null) {
-            offscreenGraphics.drawImage(currentImage,
+
+        screen = createImage(scwidth, scheight);
+
+        Graphics2D offscreen =
+                (Graphics2D) screen.getGraphics();
+
+        offscreen.setColor(Color.WHITE);
+        offscreen.fillRect(0, 0, scwidth, scheight);
+
+        offscreen.drawImage(
+                player.getImage(),
                 Math.round(player.getX()),
                 Math.round(player.getY()),
-                this
-            );
-            
-         // Draw Player1 hitbox
-            offscreenGraphics.setColor(Color.BLUE);
-            offscreenGraphics.drawRect(
-                Math.round(player.getX()),
-                Math.round(player.getY()),
-                frameWidth,
-                frameHeight
-            );
+                SPRITE_WIDTH,
+                SPRITE_HEIGHT,
+                this);
+
+        offscreen.drawImage(
+                enemy.getImage(),
+                Math.round(enemy.getX()),
+                Math.round(enemy.getY()),
+                SPRITE_WIDTH,
+                SPRITE_HEIGHT,
+                this);
+
+        offscreen.setColor(Color.RED);
+        offscreen.draw(player.getBounds());
+
+        offscreen.setColor(Color.BLUE);
+        offscreen.draw(enemy.getBounds());
+
+        if (checkCollision()) {
+            offscreen.setColor(Color.RED);
+            offscreen.drawString("COLLISION!", 20, 50);
+        } else {
+            offscreen.setColor(Color.BLACK);
+            offscreen.drawString("No Collision", 20, 50);
         }
-        
-        Image player2Image = player2.getImage();
-        if (player2Image != null) {
-            offscreenGraphics.drawImage(
-                player2Image,
-                Math.round(player2.getX()),
-                Math.round(player2.getY()),
-                this
-            );
-            
-            // Draw Player2 hitbox
-            offscreenGraphics.setColor(Color.GREEN);
-            offscreenGraphics.drawRect(
-                Math.round(player2.getX()),
-                Math.round(player2.getY()),
-                frameWidth2,
-                frameHeight2
-            );
-        }
-        
-     // Show collision text if flag is true
-        if (collisionDetected) {
-            offscreenGraphics.setColor(Color.RED);
-            offscreenGraphics.setFont(new Font("Arial", Font.BOLD, 20));
-            offscreenGraphics.drawString("Collision Detected!", 20, 100);
-        }
-        
-        g2.drawImage(oscreen, 0, 0, this);      
-        offscreenGraphics.dispose();
+
+        g2.drawImage(screen, 0, 0, this);
+
+        offscreen.dispose();
     }
 
     public void startAnimation() {
+
         running = true;
+
         gameThread = new Thread(this);
         gameThread.start();
     }
 
     @Override
     public void keyPressed(KeyEvent e) {
-        switch (e.getKeyCode()) {
-            case KeyEvent.VK_A: isAPressed = true; break;
-            case KeyEvent.VK_D: isDPressed = true; break;
-            case KeyEvent.VK_W: isWPressed = true; break;
-            case KeyEvent.VK_S: isSPressed = true; break;
-            
-            case KeyEvent.VK_LEFT:  isLeftPressed = true; break;
-            case KeyEvent.VK_RIGHT: isRightPressed = true; break;
-            case KeyEvent.VK_UP:    isUpPressed = true; break;
-            case KeyEvent.VK_DOWN:  isDownPressed = true; break;
 
+        switch (e.getKeyCode()) {
+
+            case KeyEvent.VK_A:
+                isAPressed = true;
+                break;
+
+            case KeyEvent.VK_D:
+                isDPressed = true;
+                break;
+
+            case KeyEvent.VK_W:
+                isWPressed = true;
+                break;
+
+            case KeyEvent.VK_S:
+                isSPressed = true;
+                break;
         }
     }
-   
+
     @Override
     public void keyReleased(KeyEvent e) {
-        switch (e.getKeyCode()) {
-            case KeyEvent.VK_A: isAPressed = false; break;
-            case KeyEvent.VK_D: isDPressed = false; break;
-            case KeyEvent.VK_W: isWPressed = false; break;
-            case KeyEvent.VK_S: isSPressed = false; break;
-            
-            case KeyEvent.VK_LEFT:  isLeftPressed = false; break;
-            case KeyEvent.VK_RIGHT: isRightPressed = false; break;
-            case KeyEvent.VK_UP:    isUpPressed = false; break;
-            case KeyEvent.VK_DOWN:  isDownPressed = false; break;
 
+        switch (e.getKeyCode()) {
+
+            case KeyEvent.VK_A:
+                isAPressed = false;
+                break;
+
+            case KeyEvent.VK_D:
+                isDPressed = false;
+                break;
+
+            case KeyEvent.VK_W:
+                isWPressed = false;
+                break;
+
+            case KeyEvent.VK_S:
+                isSPressed = false;
+                break;
         }
     }
 
     @Override
     public void keyTyped(KeyEvent e) {
-        // not used, leave empty
     }
-    
+
     public static void main(String[] args) {
-        BasicSprites game = new BasicSprites("Sprite Animation", 800, 600);
+
+        BasicSprites game =
+                new BasicSprites(
+                        "REDACTED: Who Controls the Truth?",
+                        800,
+                        600);
+
         game.setVisible(true);
-        game.loadPlayer(); 
         game.startAnimation();
     }
 }
